@@ -4,7 +4,7 @@ function varargout = cheb2logo
 %
 %   H = CHEB2LOGO() returns a figure handle to the logo.
 %
-% See also CHEBLOGO.
+% See also CHEBLOGO, PAFNUTY.
 
 % Copyright 2015 by The University of Oxford and The Chebfun Developers.
 % See http://www.chebfun.org/ for Chebfun information.
