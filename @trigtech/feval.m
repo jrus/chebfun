@@ -3,8 +3,12 @@ function y = feval(f, x)
 %   Y = FEVAL(F, X) Evaluation of the TRIGTECH F at points X via
 %   Horner's scheme.
 %
+%   X must be a vector, and the output of FEVAL will be a column vector of
+%   the same length as X. To evaluate a CHEBTECH at an array of points with
+%   arbitrary shape, call FEVAL on a high-level CHEBFUN object.
+%
 %   If size(F, 2) > 1 then FEVAL returns values in the form [F_1(X), F_2(X),
-%   ...], where size(F_k(X)) = size(X).
+%   ...], where length(F_k(X)) = length(X).
 %
 %   Example:
 %     f = trigtech(@(x) exp(cos(pi*x)) );
@@ -16,28 +20,17 @@ function y = feval(f, x)
 % Copyright 2015 by The University of Oxford and The Chebfun Developers. 
 % See http://www.chebfun.org/ for Chebfun information.
 
-% Deal with empty case:
-if ( isempty(f) )
-    y = [];
-    return 
+if ( ~isvector(x) )
+    error('CHEBFUN:TRIGTECH:feval:evalArrayAtNDArray', ...
+        ['Evaluation of a CHEBTECH requires a vector of inputs; ' ...
+         'to evaluate an arbitrary shape, call feval on a high-level ' ...
+         'CHEBFUN object.']);
 end
 
-% Reshape x to be a column vector for passing to polyval:
-[ignore, m] = size(f);
-% c = f.coeffs(end:-1:1, :);
-% N = size(fourierCoeff, 1);
-sizex = size(x);
-ndimsx = ndims(x);
-x = x(:);
-
-% Evaluate using some variant of Horner's scheme
-y = f.horner(x, f.coeffs, all(f.isReal));
-
-% Reshape the output if possible:
-if ( (m == 1) && ( (ndimsx > 2) || (sizex(2) > 1) ) )
-    y = reshape(y, sizex);
-elseif ( (m > 1) && ( (ndimsx == 2) || (sizex(2) > 1) ) )
-    y = reshape(y, sizex(1), m*numel(x)/sizex(1));
+if ( isempty(f) || isempty(x) )
+    y = [];
+else
+    y = f.horner(x(:), f.coeffs, all(f.isReal));
 end
 
 end
