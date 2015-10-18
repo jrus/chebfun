@@ -23,7 +23,7 @@ if ( isempty(F) )
 elseif ( ~isnumeric(colIdx) && strcmp(colIdx, ':') )
     return
     
-elseif ( (numel(colIdx) == numel(numCols)) && all(colIdx == 1:numCols) )
+elseif ( (numel(colIdx) == numCols) && all(colIdx == 1:numCols) )
     return
     
 elseif ( max(colIdx) > numCols )
