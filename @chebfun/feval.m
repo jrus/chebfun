@@ -13,7 +13,7 @@ function out = feval(F, x, varargin)
 %   using left-hand limits to evaluate F at any breakpoints. FEVAL(F, X,
 %   'right') and FEVAL(F, X, '+') do the same but using right-hand limits.
 %
-%   F(X), F('left'), F(X, 'left'), etc, are equivalent syntaxes. 
+%   F(X), F('left'), F(X, 'left'), etc, are equivalent syntaxes.
 %
 %   Example:
 %     f = chebfun(@(x) 1./(1 + 25*x.^2));
@@ -24,7 +24,7 @@ function out = feval(F, x, varargin)
 % Copyright 2015 by The University of Oxford and The Chebfun Developers.
 % See http://www.chebfun.org/ for Chebfun information.
 
-% If F or x are empty, there's nothing to do.
+% If F or x is empty, there's nothing to do.
 if ( isempty(F) )
     out = [];
     return
@@ -57,103 +57,107 @@ if ( ischar(x) )
     return
 end
 
-%% EVALUATE EACH COLUMN:
-if ( numel(F) == 1 )
-    out = columnFeval(F, x, varargin{:});
-else
-    % Deal with quasimatrices:
-    out = cell(1, numel(F));
-    for k = 1:numel(F)
-        out{k} = columnFeval(F(k), x, varargin{:});
+%% EVALUATE:
+
+% For x of shape [m n p1 p2 p3 ...], with p1*p2*p3*... = p, save the
+% values m, n, and p for later:
+[m, n, p] = size(x);
+
+% This represents the size of our final output. We will adjust it later.
+outsize = size(x);
+
+% Reshape x into a single column, for evaluation:
+x = x(:);
+
+% Call the number of columns (or rows) in a quasimatrix or array-valued
+% chebfun numCols. Evaluate at the column vector of points, yielding
+% an output matrix of size (m*n*p, numCols)
+numCols = numel(F);
+if ( numCols > 1 )
+    % If F is a quasimatrix, loop through and evaluate each column:
+    out = zeros(m*n*p, numCols);
+    for col = 1:numCols
+        out(:,col) = columnFeval(F(col), x, varargin{:});
     end
-    out = cell2mat(out);
+else
+    % If F is not a quasimatrix, evaluate all at once:
+    out = columnFeval(F, x, varargin{:});
+    numCols = size(out, 2);
 end
 
-%% DEAL WITH ROW CHEBFUNS:
+% Reshape the result such that each column will remain a contiguous
+% block in our final output, and the third dimension indexes over the
+% results from separate rows or columns of a quasimatrix.
 if ( F(1).isTransposed )
-    % We got a passed a row CHEBFUN. If X had more than two dimensions, we can't
-    % simply transpose the output from above, instead, we need to use permute.
-    ndimsx = ndims(x);
-    if ( ndimsx <= 2 )
-        out = out.';
-    else
-        % We define "transposition" in this case to mean the switching of the
-        % first two dimensions.
-        out = permute(out, [2 1 3:ndimsx]);
-    end
+    out = reshape(out, m, n*p, numCols);
+    outsize(1) = outsize(1) * numCols;
+else
+    out = reshape(out, m*n, p, numCols);
+    outsize(2) = outsize(2) * numCols;
 end
-        
+
+% Transpose the 2nd and 3rd dimension to properly interleave results from
+% separate quasimatrix columns and then reshape output to final size:
+out = reshape(permute(out, [1, 3, 2]), outsize);
+
 end
 
 function out = columnFeval(f, x, varargin)
-% Act on each column. Note that columnFeval ignores the transpose state of F.
+% Evaluate one column of a quasimatrix, or every column of an array-valued
+% chebfun. Ignore the distinction between row and column chebfuns.
 
 %% INITIALISE:
-
-% Reshape x to be a column vector.
-sizex = size(x);
-ndimsx = ndims(x);
-x = x(:);
-
-% Initialise output:
-numFuns = numel(f.funs);
-
-funs = f.funs;
 dom = f.domain;
+funs = f.funs;
+numFuns = numel(funs);
 
 %% LEFT AND RIGHT LIMITS:
 % Deal with feval(f, x, 'left') and feval(f, x, 'right'):
-leftFlag = 0; rightFlag = 0;
+leftFlag = 0;
+rightFlag = 0;
 if ( nargin > 2 )
     lr = varargin{1};
-    leftFlag = any(strcmpi(lr, {'left', '-'}));
-    rightFlag = any(strcmpi(lr, {'right', '+'}));
-    if ( ~(leftFlag || rightFlag) )
-        if ( ischar(lr) )
+    if ( ischar(lr) )
+        leftFlag = any(strcmpi(lr, {'left', '-'}));
+        rightFlag = any(strcmpi(lr, {'right', '+'}));
+        if ( ~(leftFlag || rightFlag) )
             error('CHEBFUN:CHEBFUN:feval:leftRightChar',...
                 'Unknown input argument "%s".', lr);
-        else
-            error('CHEBFUN:CHEBFUN:feval:leftRight', 'Unknown input argument.');
         end
+    else
+        error('CHEBFUN:CHEBFUN:feval:leftRight', 'Unknown input argument.');
     end
 end
 
 %% VALUES FROM FUNS:
-
 if ( numFuns == 1 )
-    
     % Things are simple when there is only a single FUN:
-    out = feval(funs{1}, x(:), varargin{:});
-    numCols = size(out, 2);
-    
+    out = feval(funs{1}, x, varargin{:});
 else
-    
     % For multiple FUNs we must determine which FUN corresponds to each x.
-    
-    % Initialise output matrix:
-    numCols = numColumns(f);
-    out = zeros(numel(x), numCols);
-    
+
+    % Preallocate output matrix:
+    out = zeros(numel(x), numColumns(f));
+
     % Replace the first and last domain entries with +/-inf. (Since we want to
     % use FUN{1} if real(x) < dom(1) and FUN{end} if real(x) > dom(end)).
     domInf = [-inf, dom(2:end-1), inf];
-    
-    % Loop over each FUN. If real(x) is in [dom(k) dom(k+1)] then use FUN{k}.
+
+    % Loop over each FUN. For all values of x such that real(x) is in
+    % [dom(k) dom(k+1)], evaluate FUN{k}(x).
     xReal = real(x);
     for k = 1:numFuns
         I = ( xReal >= domInf(k) ) & ( xReal < domInf(k+1) );
-        if ( any(I(:)) )
-            % Evaluate the appropriate fun:
+        if ( any(I) )
             out(I,:) = feval(funs{k}, x(I), varargin{:});
         end
     end
-    
+
 end
 
 %% POINTVALUES:
 % If the evaluation point corresponds to a breakpoint, we get the value from
-
-% f.pointValues. However, if the 'left' or 'right' flag is given, we first 
+% f.pointValues. However, if the 'left' or 'right' flag is given, we first
 % modify the entry in point values to take either the left- or right-sided
 % limit, respectively.
 
@@ -173,23 +177,5 @@ if ( any(xAtBreaks) )
     out(xAtBreaks,:) = pointValues(domIndices(xAtBreaks),:);
 end
 
-%% RESHAPE FOR OUTPUT:
-% Reshape fx, which is a column vector or horizontal concatenation of column
-% vectors, to be of the appropriate size, and handle transposition.
-sizefx = sizex;
-sizefx(2) = numCols*sizex(2);
-if ( ndimsx == 2 )
-    % If x was just a matrix or vector, the reshape is straightforward.
-    out = reshape(out, sizefx);
-else
-    % If x had more than two dimensions, we have to be more careful.  The
-    % cell2mat(mat2cell(...).') effects a transpose which keeps certain
-    % columnar blocks of the fx matrix intact, putting the entries in the
-    % correct order for reshape().
-    blockLength = sizex(1)*sizex(2);
-    blocksPerCol = prod(sizex(3:end));
-    out = reshape(cell2mat(mat2cell(out, blockLength*ones(1, blocksPerCol), ...
-        ones(1, numCols)).'), sizefx);
-end
 
 end
