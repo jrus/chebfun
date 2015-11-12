@@ -36,7 +36,7 @@
 
 #else
     typedef double vdouble;
-    define STRIDE 1
+#   define STRIDE 1
 
 #   define load_vector(_p) (_p)
 #   define store_vector(_p, _v) (_p) = (_v)
