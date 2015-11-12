@@ -56,7 +56,7 @@ clenshaw(double *py,
 {
     int i, k;
     unsigned d;
-    vdouble mx, mx2, mt;
+    vdouble x, x2;
     vdouble b1, b2;
     double b, b0 = 0;
     const double two = 2.0;
@@ -70,22 +70,23 @@ clenshaw(double *py,
     }
 
     /* Loop over the evaluation points X, each time taking as many points as
-     * fit in a SIMD vector. Call our vector of X points mx. */
+     * fit in a SIMD vector. */
     for (i = 0; i < xlen; i += STRIDE) {
-        mx = load_vector(px[i]);
-        mx2 = mul_pd(mx, broadcast_val(two));
+        x = load_vector(px[i]);
+        x2 = mul_pd(x, broadcast_val(two));
         b2 = broadcast_val(b0);
         b1 = broadcast_val(b);
 
         for (k = d; k > 0; k -= 2) {
-            mt = fmsub_pd(mx2, b1, b2);
-            b2 = add_pd(mt, broadcast_val(pc[k]));
-            mt = fmsub_pd(mx2, b2, b1);
-            b1 = add_pd(mt, broadcast_val(pc[k-1]));
+            /* b2 = 2*x * b1 - b2 + c[k]
+             * b1 = 2*x * b2 - b1 + c[k-1] */
+            b2 = add_pd(fmsub_pd(x2, b1, b2),
+                        broadcast_val(pc[k]));
+            b1 = add_pd(fmsub_pd(x2, b2, b1),
+                        broadcast_val(pc[k-1]));
         }
-
-        mt = fmsub_pd(mx, b1, b2);
-        b2 = add_pd(mt, broadcast_val(pc[0]));
+        b2 = add_pd(fmsub_pd(x, b1, b2),
+                    broadcast_val(pc[0]));
 
         store_vector(py[i], b2);
     }
@@ -98,7 +99,7 @@ clenshaw_complex(double *pyr, double *pyi,
 {
     int i, k;
     unsigned d;
-    vdouble mxr, mxi, mx2r, mx2i;
+    vdouble xr, xi, x2r, x2i;
     vdouble b1r, b1i, b2r, b2i;
 
     double br, bi, b0 = 0;
@@ -112,37 +113,37 @@ clenshaw_complex(double *pyr, double *pyi,
     }
 
     for (i = 0; i < xlen; i += STRIDE) {
-        mxr = load_vector(pxr[i]);
-        mxi = load_vector(pxi[i]);
-        mx2r = mul_pd(mxr, broadcast_val(two));
-        mx2i = mul_pd(mxi, broadcast_val(two));
+        xr = load_vector(pxr[i]);
+        xi = load_vector(pxi[i]);
+        x2r = mul_pd(xr, broadcast_val(two));
+        x2i = mul_pd(xi, broadcast_val(two));
         b2r = broadcast_val(b0);
         b2i = broadcast_val(b0);
         b1r = broadcast_val(br);
         b1i = broadcast_val(bi);
 
-        /* To compute B2 = 2*X*B1 - B2 + Ck using complex arithmetic, we have:
-         *
-         * real(B2) = real(2*X) * real(B1) - imag(2*X) * imag(B1) - real(B2) + real(Ck)
-         * imag(B2) = real(2*X) * imag(B1) + imag(2*X) * real(B1) - imag(B2) + imag(Ck)
-         * etc.
-         */
         for (k = d; k > 0; k -= 2) {
-            b2r = sub_pd(fmadd_pd(mx2r, b1r, broadcast_val(pcr[k])),
-                         fmadd_pd(mx2i, b1i, b2r));
-            b2i = add_pd(fmadd_pd(mx2r, b1i, broadcast_val(pci[k])),
-                         fmsub_pd(mx2i, b1r, b2i));
-
-            b1r = sub_pd(fmadd_pd(mx2r, b2r, broadcast_val(pcr[k-1])),
-                         fmadd_pd(mx2i, b2i, b1r));
-            b1i = add_pd(fmadd_pd(mx2r, b2i, broadcast_val(pci[k-1])),
-                         fmsub_pd(mx2i, b2r, b1i));
+           /* b2 = 2*x * b1 - b2 + c[k]
+            * b1 = 2*x * b2 - b1 + c[k-1]
+            *
+            * In complex arithmetic, we have:
+            * re(b2) = re(2*x)*re(b1) - im(2*x)*im(b1) - re(b2) + re(c[k])
+            * im(b2) = re(2*x)*im(b1) + im(2*x)*re(b1) - im(b2) + im(c[k])
+            * re(b1) = re(2*x)*re(b2) - im(2*x)*im(b2) - re(b1) + re(c[k-1])
+            * im(b1) = re(2*x)*im(b2) + im(2*x)*re(b2) - im(b1) + im(c[k-1]) */
+            b2r = sub_pd(fmadd_pd(x2r, b1r, broadcast_val(pcr[k])),
+                         fmadd_pd(x2i, b1i, b2r));
+            b2i = add_pd(fmadd_pd(x2r, b1i, broadcast_val(pci[k])),
+                         fmsub_pd(x2i, b1r, b2i));
+            b1r = sub_pd(fmadd_pd(x2r, b2r, broadcast_val(pcr[k-1])),
+                         fmadd_pd(x2i, b2i, b1r));
+            b1i = add_pd(fmadd_pd(x2r, b2i, broadcast_val(pci[k-1])),
+                         fmsub_pd(x2i, b2r, b1i));
         }
-
-        b2r = sub_pd(fmadd_pd(mxr, b1r, broadcast_val(pcr[0])),
-                     fmadd_pd(mxi, b1i, b2r));
-        b2i = add_pd(fmadd_pd(mxr, b1i, broadcast_val(pci[0])),
-                     fmsub_pd(mxi, b1r, b2i));
+        b2r = sub_pd(fmadd_pd(xr, b1r, broadcast_val(pcr[0])),
+                     fmadd_pd(xi, b1i, b2r));
+        b2i = add_pd(fmadd_pd(xr, b1i, broadcast_val(pci[0])),
+                     fmsub_pd(xi, b1r, b2i));
 
         store_vector(pyr[i], b2r);
         store_vector(pyi[i], b2i);
@@ -151,7 +152,8 @@ clenshaw_complex(double *pyr, double *pyi,
 
 /* Call the matlab function full to convert a sparse -> full array. */
 mxArray *
-sparse_to_full(const mxArray *in) {
+sparse_to_full(const mxArray *in)
+{
     mxArray **out;
     mexCallMATLAB(1, out, 1, (mxArray **)&in, "full");
     return *out;
