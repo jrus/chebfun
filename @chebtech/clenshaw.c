@@ -9,12 +9,10 @@
  * same number of columns as C.
  *
  * Input:   vector X, matrix C
- * Output:  vector Y
+ * Output:  matrix Y
  *
  *=================================================================*/
 #include "clenshaw.h"
-
-#include "mex.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -72,22 +70,22 @@ clenshaw(double *py,
     /* Loop over the evaluation points X, each time taking as many points as
      * fit in a SIMD vector. Call our vector of X points mx. */
     for (i = 0; i < xlen; i += STRIDE) {
-        mx = load_pd(&px[i]);
-        mx2 = mul_pd(mx, broadcast_sd(two));
-        b2 = broadcast_sd(b0);
-        b1 = broadcast_sd(b);
+        mx = load_vector(px[i]);
+        mx2 = mul_pd(mx, broadcast_val(two));
+        b2 = broadcast_val(b0);
+        b1 = broadcast_val(b);
 
         for (k = d; k > 0; k -= 2) {
             mt = fmsub_pd(mx2, b1, b2);
-            b2 = add_pd(mt, broadcast_sd(pc[k]));
+            b2 = add_pd(mt, broadcast_val(pc[k]));
             mt = fmsub_pd(mx2, b2, b1);
-            b1 = add_pd(mt, broadcast_sd(pc[k-1]));
+            b1 = add_pd(mt, broadcast_val(pc[k-1]));
         }
 
         mt = fmsub_pd(mx, b1, b2);
-        b2 = add_pd(mt, broadcast_sd(pc[0]));
+        b2 = add_pd(mt, broadcast_val(pc[0]));
 
-        store_pd(&py[i], b2);
+        store_vector(py[i], b2);
     }
 }
 
@@ -112,14 +110,14 @@ clenshaw_complex(double *pyr, double *pyi,
     }
 
     for (i = 0; i < xlen; i += STRIDE) {
-        mxr = load_pd(&pxr[i]);
-        mxi = load_pd(&pxi[i]);
-        mx2r = mul_pd(mxr, broadcast_sd(two));
-        mx2i = mul_pd(mxi, broadcast_sd(two));
-        b2r = broadcast_sd(b0);
-        b2i = broadcast_sd(b0);
-        b1r = broadcast_sd(br);
-        b1i = broadcast_sd(bi);
+        mxr = load_vector(pxr[i]);
+        mxi = load_vector(pxi[i]);
+        mx2r = mul_pd(mxr, broadcast_val(two));
+        mx2i = mul_pd(mxi, broadcast_val(two));
+        b2r = broadcast_val(b0);
+        b2i = broadcast_val(b0);
+        b1r = broadcast_val(br);
+        b1i = broadcast_val(bi);
 
         /* To compute B2 = 2*X*B1 - B2 + Ck using complex arithmetic, we have:
          *
@@ -128,24 +126,24 @@ clenshaw_complex(double *pyr, double *pyi,
          * etc.
          */
         for (k = d; k > 0; k -= 2) {
-            b2r = sub_pd(fmadd_pd(mx2r, b1r, broadcast_sd(pcr[k])),
+            b2r = sub_pd(fmadd_pd(mx2r, b1r, broadcast_val(pcr[k])),
                          fmadd_pd(mx2i, b1i, b2r));
-            b2i = add_pd(fmadd_pd(mx2r, b1i, broadcast_sd(pci[k])),
+            b2i = add_pd(fmadd_pd(mx2r, b1i, broadcast_val(pci[k])),
                          fmsub_pd(mx2i, b1r, b2i));
 
-            b1r = sub_pd(fmadd_pd(mx2r, b2r, broadcast_sd(pcr[k-1])),
+            b1r = sub_pd(fmadd_pd(mx2r, b2r, broadcast_val(pcr[k-1])),
                          fmadd_pd(mx2i, b2i, b1r));
-            b1i = add_pd(fmadd_pd(mx2r, b2i, broadcast_sd(pci[k-1])),
+            b1i = add_pd(fmadd_pd(mx2r, b2i, broadcast_val(pci[k-1])),
                          fmsub_pd(mx2i, b2r, b1i));
         }
 
-        b2r = sub_pd(fmadd_pd(mxr, b1r, broadcast_sd(pcr[0])),
+        b2r = sub_pd(fmadd_pd(mxr, b1r, broadcast_val(pcr[0])),
                      fmadd_pd(mxi, b1i, b2r));
-        b2i = add_pd(fmadd_pd(mxr, b1i, broadcast_sd(pci[0])),
+        b2i = add_pd(fmadd_pd(mxr, b1i, broadcast_val(pci[0])),
                      fmsub_pd(mxi, b1r, b2i));
 
-        store_pd(&pyr[i], b2r);
-        store_pd(&pyi[i], b2i);
+        store_vector(pyr[i], b2r);
+        store_vector(pyi[i], b2i);
     }
 }
 
@@ -184,7 +182,7 @@ mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     px = prhs[0];
     pc = prhs[1];
 
-    /* Make sure that X and C are both dense matrices of doubles. */
+    /* Make sure that X and C are both matrices of doubles. */
     if (!mxIsDouble(px) || !mxIsDouble(pc)) {
         mexErrMsgIdAndTxt("CHEBFUN:CHEBTECH:clenshaw:inputtype",
             "Inputs to Clenshaw must be of type double.");
