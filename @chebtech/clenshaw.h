@@ -6,8 +6,6 @@
 #   include <x86intrin.h>
 #endif
 
-#include "mex.h"
-
 // TODO: add 512-bit vectors?
 
 #ifdef HAVE_AVX

@@ -14,6 +14,8 @@
  *=================================================================*/
 #include "clenshaw.h"
 
+#include "mex.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,11 +151,10 @@ clenshaw_complex(double *pyr, double *pyi,
 
 /* Call the matlab function full to convert a sparse -> full array. */
 mxArray *
-sparseToFull(const mxArray *in) {
-    mxArray *plhs[1];
-    const mxArray *prhs[1] = {in};
-    mexCallMATLAB(1, plhs, 1, (mxArray **)prhs, "full");
-    return plhs[0];
+sparse_to_full(const mxArray *in) {
+    mxArray **out;
+    mexCallMATLAB(1, out, 1, (mxArray **)&in, "full");
+    return *out;
 }
 
 /* Main function. */
@@ -215,10 +216,10 @@ mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[])
     /* If either X or C is a sparse matrix, call out to Matlab to convert it
      * to a full matrix. */
     if (mxIsSparse(px)) {
-        px = sparseToFull(px);
+        px = sparse_to_full(px);
     }
     if (mxIsSparse(pc)) {
-        pc = sparseToFull(pc);
+        pc = sparse_to_full(pc);
     }
 
     /* Test for complex inputs. */
