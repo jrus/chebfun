@@ -31,7 +31,7 @@ end
 
 if ( isempty(f) || isempty(x) )
     % Empty array with the proper dimensions:
-    y = zeros(length(x), size(f, 2);
+    y = zeros(length(x), size(f, 2));
 else
      y = f.clenshaw(x(:), f.coeffs);
 end
